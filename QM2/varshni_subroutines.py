@@ -215,3 +215,14 @@ def print_results(raccoglitore_1):
             for result in fit_results:
                 result = [float(val) if isinstance(val, np.float64) else val for val in result]
                 print(f"    Media: {result[0]}, Sigma: {result[1]}, Chi^2: {result[2]}, GDL: {result[3]}, Chi ridotto: {result[4]}, p-value: {result[5]}")
+                
+       
+def media_pesata (values, errors):
+    num, den = 0, 0
+    for val, err in zip(values, errors):
+        w = 1/(err*err)
+        num += val * w
+        den += w
+    
+    return num/den
+
