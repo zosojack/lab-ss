@@ -43,9 +43,14 @@ def gaussiana(x, A, mu, sigma):
     return A * np.exp(-0.5 * ((x - mu) / sigma) ** 2)
 '''
 
-# costruisce automaticamente il nome del file
+# costruisce automaticamente il nome del file di rampa_T
 def build_name (campione, d_o_emi, d_o_ass, temperatura):
     name = '../data/rampa_T/' + campione + d_o_emi + 'OD_' + d_o_ass + 'OD_orangeF_' + str(temperatura) + 'K.txt'
+    return name
+
+# costruisce automaticamente il nome del file dei diversi spot
+def spot_name (campione, d_o_emi, d_o_ass, num_spot):
+    name = '../data/tre_spot/' + campione + d_o_emi + 'OD_' + d_o_ass + 'OD_orangeF_15K_spot' + str(num_spot) + '.txt'
     return name
 
 # legge il file, estrapola ascissa(wavelength) e ordinata (counts)
@@ -80,10 +85,10 @@ def leggi_file (nomefile):
 # ~ 830 picchetto a destra molto soppresso 
 
 # Funzione per rilevare i picchi in due regioni
-def find_peak_in_regions(asse_x, asse_y):
+def find_peak_in_regions(asse_x, asse_y, height=20, distance=5, prominence=5):
     regioni = [
         (690, 800, {'height': 15, 'distance': 10, 'prominence': 6}),
-        (800, 880, {'height': 20, 'distance': 5, 'prominence': 5}),
+        (800, 880, {'height': height, 'distance': distance, 'prominence': prominence}),
     ]
 
     picchi_regioni = []
@@ -105,7 +110,7 @@ def find_peak_in_regions(asse_x, asse_y):
 
 # ora ho i picchi, per ciascun picco bisogna fittare con gauss
 # Funzione per il fit locale attorno a ciascun picco
-def fit_gaussiani(asse_x, asse_y, picchi_regioni, emi, ass, temp):
+def fit_gaussiani(asse_x, asse_y, picchi_regioni, emi, ass, temp, option=0):
     """
     Funzione per effettuare il fit delle regioni selezionate con gaussiane e plottare i risultati.
     Restituisce i risultati del fit per ciascuna regione.
@@ -197,7 +202,10 @@ def fit_gaussiani(asse_x, asse_y, picchi_regioni, emi, ass, temp):
             print(f"Errore nei dati per la regione {i + 1}: {e}")
 
     # Titolo e legenda
-    plt.title(f"emi={emi} | ass={ass} | T={temp}")
+    if option == 0:
+        plt.title(f"emi={emi} | ass={ass} | T={temp}")
+    else:
+        plt.title(f"emi={emi} | ass={ass} | Spot {temp}")
     plt.xlabel("Lunghezza d'onda (nm)")
     plt.ylabel("Conteggi")
     plt.legend()
