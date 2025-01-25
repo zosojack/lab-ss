@@ -77,6 +77,34 @@ def leggi_file (nomefile):
 
     return wavelength, sample_counts
 
+# legge il file, estrapola ascissa(wavelength) e ordinata (counts)
+def leggi_file_qd(nomefile):
+    # Leggi il file ignorando righe iniziali e usando il separatore corretto
+    file = pd.read_csv(nomefile, skiprows=5, delimiter=';', engine='python', index_col=False)
+
+    # Rimuovi spazi extra nei nomi delle colonne
+    file.columns = file.columns.str.strip()
+
+    # Verifica le colonne disponibili
+    print("Nomi delle colonne:", file.columns)
+
+    # Estrai le colonne desiderate
+    # Verifica se le colonne sono stringhe prima di applicare .str
+    if file["Wave"].dtype == "object":
+        file["Wave"] = file["Wave"].str.replace("nm", "").str.strip()
+    if file["Scope Corrected for Dark"].dtype == "object":
+        file["Scope Corrected for Dark"] = file["Scope Corrected for Dark"].str.strip()
+
+    # Converti le colonne in valori numerici
+    wavelength = pd.to_numeric(file["Wave"], errors="coerce")
+    sample_counts = pd.to_numeric(file["Scope Corrected for Dark"], errors="coerce")
+    
+    # Modifica i valori negativi a 0 utilizzando Pandas
+    sample_counts = sample_counts.apply(lambda x: x if x >= 0 else 0)
+    
+    return wavelength, sample_counts
+
+
 # prendi i picchi: ce ne sono 2 nel reference e 4 nel campione 2
 # è intelligente selezionare solo le regioni dello spettro che ci interessano:
 # ~ 710/740 picco AlGaAs che scompare 
@@ -85,10 +113,12 @@ def leggi_file (nomefile):
 # ~ 830 picchetto a destra molto soppresso 
 
 # Funzione per rilevare i picchi in due regioni
-def find_peak_in_regions(asse_x, asse_y, height=20, distance=5, prominence=5):
+def find_peak_in_regions(asse_x, asse_y, height=20, distance=7, prominence=6):
     regioni = [
-        (690, 800, {'height': 15, 'distance': 10, 'prominence': 6}),
-        (800, 880, {'height': height, 'distance': distance, 'prominence': prominence}),
+        (690, 800, {'height': 15, 'distance': 10, 'prominence': prominence}),
+        (800, 880, {'height': height, 
+                    'distance': distance, 
+                    'prominence': prominence}),
     ]
 
     picchi_regioni = []
@@ -110,11 +140,27 @@ def find_peak_in_regions(asse_x, asse_y, height=20, distance=5, prominence=5):
 
 # ora ho i picchi, per ciascun picco bisogna fittare con gauss
 # Funzione per il fit locale attorno a ciascun picco
-def fit_gaussiani(asse_x, asse_y, picchi_regioni, emi, ass, temp, option=0):
+def fit_gaussiani(asse_x, asse_y, picchi_regioni, emi, ass, temp, option=0, fondo=13):
     """
     Funzione per effettuare il fit delle regioni selezionate con gaussiane e plottare i risultati.
     Restituisce i risultati del fit per ciascuna regione.
     """
+    
+    # per emi==0 con i qd bisogna sistemare la questione
+    if emi == '0' and fondo != 13:
+        flag = 0
+        a, b = None, None  # Inizializziamo le variabili per chiarezza
+        for i, x in enumerate(asse_x): 
+            if x > 729 and flag == 0:  
+                a = i
+                flag = 1
+            elif x > 769 and flag == 1:  
+                b = i
+                flag = 2
+                break  # Interrompe il ciclo appena trovato `b`
+        # Assegna la regione ai picchi
+        if a is not None and b is not None:  # Assicura che entrambi siano stati assegnati
+            picchi_regioni[0] = [a, b]
 
     # Definizione delle funzioni per il fit
     def gaussiana(x, a, mu, sigma):
@@ -126,7 +172,7 @@ def fit_gaussiani(asse_x, asse_y, picchi_regioni, emi, ass, temp, option=0):
         for i in range(n):
             a, mu, sigma = params[3 * i: 3 * (i + 1)]
             y += gaussiana(x, a, mu, sigma)
-        return y
+        return y + fondo # è la base di noise
 
     # Dizionario per memorizzare i risultati
     risultati = {"Regione 1": [], "Regione 2": []}
@@ -134,17 +180,79 @@ def fit_gaussiani(asse_x, asse_y, picchi_regioni, emi, ass, temp, option=0):
     plt.figure(figsize=(5, 3))
     plt.plot(asse_x, asse_y, color='blue') 
 
+    # Margini personalizzati per ciascuna regione
+    margini_regioni = [
+        {"sx": 20, "dx": 25},  # Margini per Regione 1
+        {"sx": 9, "dx": 9}  # Margini per Regione 2
+    ]
+
     # Ciclo sulle regioni e sui picchi
     for i, picchi in enumerate(picchi_regioni):
         if len(picchi) == 0:
             print(f"Nessun picco nella regione {i + 1}, skip fit.")
             continue
+        
+        # - - - - - - - - - - - - - - - - - - - - - - - - - - -
+        # Trova i margini sinistro e destro per la regione
+        indice_centrale = picchi[0]  # Usa il primo picco come riferimento
+
+        # Soglia in ordinata per determinare i margini
+        # deve essere flessibile alla variazione del rapporto tra picco e fondo
+        if asse_y[indice_centrale] > 12000:
+            soglia = 900 
+        elif 9000 < asse_y[indice_centrale] < 12000:
+            soglia = 700
+        elif 5000 < asse_y[indice_centrale] < 9000:
+            soglia = 450
+        elif 2000 < asse_y[indice_centrale] < 5000:
+            soglia = 300
+        elif 500  < asse_y[indice_centrale] < 2000:
+            soglia = 100 
+        elif 200   < asse_y[indice_centrale] < 500:
+            soglia = 27
+            if fondo != 13:
+                soglia = 10
+            if option != 0:
+                soglia = 25
+        elif 100   < asse_y[indice_centrale] < 200:
+            soglia = 21
+            if fondo != 13:
+                soglia = 5
+            if option != 0:
+                soglia = 20
+        else:
+            soglia = 16
+            if fondo != 13:
+                soglia = 2
+            if option != 0:
+                soglia = 15
+        
+        # Cerca a sinistra
+        for j in range(indice_centrale, indice_centrale-100, -1):
+            if asse_y[j] < soglia:
+                margine_sx = asse_x[j]
+                break
+        else:
+            margine_sx = asse_x[indice_centrale-100]  # Default al limite sinistro
+
+        # Cerca a destra
+        for j in range(indice_centrale, indice_centrale+70):
+            if asse_y[j] < soglia:
+                margine_dx = asse_x[j]
+                break
+        else:
+            margine_dx = 795  # Default al limite destro
 
         # Estrai i dati per la regione corrispondente
-        limiti = (asse_x[picchi[0]] - 10, asse_x[picchi[-1]] + 10)  # Range della regione
+        limiti = (margine_sx, margine_dx)
         maschera = (asse_x >= limiti[0]) & (asse_x <= limiti[1])
         x_region = asse_x[maschera]
         y_region = asse_y[maschera]
+        # - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+        # Debugging opzionale
+        #print(f"Regione {i + 1}: limiti ({limiti[0]}, {limiti[1]})")
+        #print(f"Picchi trovati: {asse_x[picchi]}")
 
         if len(x_region) == 0:
             print(f"Nessun dato nella regione {i + 1}, skip fit.")
@@ -155,6 +263,8 @@ def fit_gaussiani(asse_x, asse_y, picchi_regioni, emi, ass, temp, option=0):
             plt.scatter(asse_x[picchi], asse_y[picchi], color='green', s=10, label=f"Picchi Regione {i + 1}")
         else:
             plt.scatter(asse_x[picchi], asse_y[picchi], color='red', s=10, label=f"Picchi Regione {i + 1}")
+            
+        
 
         # Parametri iniziali per il fit
         p0 = []
@@ -181,26 +291,27 @@ def fit_gaussiani(asse_x, asse_y, picchi_regioni, emi, ass, temp, option=0):
             # Memorizza i parametri dei picchi nel dizionario
             region_name = f"Regione {i + 1}"
             for j in range(len(picchi)):
+                A  = popt[3 * j + 0]
                 mu = popt[3 * j + 1]  # Media
                 sigma = popt[3 * j + 2]  # Deviazione standard
 
                 # Estrai errore sulla media dalla matrice di covarianza
                 errore_media = np.sqrt(np.diag(pcov))[3 * j + 1]
 
-                risultati[region_name].append((mu, errore_media, sigma))
+                risultati[region_name].append((mu, errore_media, sigma, A))
 
-            # Debug: stampa i parametri del fit
-            n_gaussiane = len(popt) // 3
-            fit_type = "doppia gaussiana" if n_gaussiane > 1 else "singola gaussiana"
-            print(f"Fit ({fit_type}) per Regione {i + 1}:")
-            for j in range(n_gaussiane):
-                print(f"  Gaussiana {j + 1}: a={popt[3 * j]:.2f}, mu={popt[3 * j + 1]:.2f}, sigma={popt[3 * j + 2]:.2f}")
+                # Debug: stampa i parametri del fit
+                n_gaussiane = len(popt) // 3
+                fit_type = "doppia gaussiana" if n_gaussiane > 1 else "singola gaussiana"
+                print(f"Fit ({fit_type}) per Regione {i + 1}:")
+                for j in range(n_gaussiane):
+                    print(f"  Gaussiana {j + 1}: a={popt[3 * j]:.2f}, mu={popt[3 * j + 1]:.2f}, sigma={popt[3 * j + 2]:.2f}")
 
         except RuntimeError:
             print(f"Fit non riuscito per la regione {i + 1}.")
         except ValueError as e:
             print(f"Errore nei dati per la regione {i + 1}: {e}")
-
+            
     # Titolo e legenda
     if option == 0:
         plt.title(f"emi={emi} | ass={ass} | T={temp}")
@@ -233,4 +344,7 @@ def media_pesata (values, errors):
         den += w
     
     return num/den
+
+
+
 
