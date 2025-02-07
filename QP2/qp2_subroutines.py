@@ -199,3 +199,104 @@ def fit_N_gaussiane (x_fit, y_fit, params, bounds, N_MAX_GAUSS=5, n_acq=5):
             chi2_rid = chi2/dof
             
     return popt, pcov, chi2_rid
+
+
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# PER L'ANALISI DEL PbS IN T.R.P.L.
+# TIME RESOLVED PHOTOLUMINESCENCE
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+# per la TRPL! seleziona solo la prima e le ultime due colonne
+def read_trpl_csv (nomefile):
+
+    data = np.loadtxt(nomefile, skiprows=1, delimiter=';')
+    
+    # colonna 0: lunghezze d'onda
+    # colonna 1: counts
+    
+    waveln = data[:, 0]
+    emissione = np.where(data[:, 3] < 0, 0, data[:, 3])
+    trasmissione = np.where(data[:, 4] < 0, 0, data[:, 4])
+    
+    assorbimento = emissione - trasmissione
+   
+    return waveln, assorbimento, emissione, trasmissione
+
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+# PER L'ANALISI DELL'ASSORBIMENTO PbS 2000 
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+# stavolta uso pandas perché ci sono scritte in fondo al file
+def leggi_file_assorbimento(nomefile):
+    df = pd.read_csv(nomefile, delim_whitespace=True, skiprows=19, header=None, on_bad_lines='skip')
+
+    # Converte le colonne in numeri, mettendo NaN se ci sono errori
+    df[0] = pd.to_numeric(df[0], errors='coerce')
+    df[1] = pd.to_numeric(df[1], errors='coerce')
+
+    # Rimuove righe con NaN
+    df = df.dropna()
+
+    waveln = df.iloc[:, 0].values
+    #assorbimento = df.iloc[:, 1].values
+    assorbimento = np.where(df.iloc[:, 1] < 0, 0, df.iloc[:, 1].values)
+
+    return np.array(waveln), np.array(assorbimento)
+
+
+# in alcune regioni il conteggio si alza in maniera anomala
+# probabilmente dovuto a cambiamento lampada nello strumento
+# funzione che pulisce le crescite vertiginose
+def clean_counts_assorbimento(counts, n=1, n_primi=20, n_ultimi=20):
+    filtered_counts = np.copy(counts)
+    
+    for i in range(len(counts)):
+        # mi concentro su una regione localizzata        
+        left = max(0, i - n_primi)
+        right = min(len(counts), i + n_ultimi)
+        # calcolo media e deviazione standard locali
+        local_mean = np.mean(counts[left:right])
+        local_std = np.std(counts[left:right])
+        # stabilisco i valori di soglia
+        upp = local_mean + (n * local_std)
+        low = local_mean - (n * local_std)
+        
+        # se il conteggio i-esimo è oltre i limiti, viene sostituito con la media locale
+        if counts[i] > upp or counts[i] < low:
+            filtered_counts[i] = local_mean
+        # se invece è nullo, viene sostituito col precedente (se è il primo rimane 0)
+        elif counts[i] == 0 and i < len(counts) - 1 and i!=0:
+            filtered_counts[i] = counts[i + 1]
+    
+    return filtered_counts
+
+
+# Funzione per il calcolo del chi2 ridotto      
+def chi2_gaussiana (x_fit, y_fit, popt):
+    ## CHI 2 RID ##
+    y_fit_values = gaussiana(x_fit, *popt)
+    
+    # rimuovo elementi nulli
+    mask = (y_fit != 0) & (y_fit_values != 0)  # Maschera per tenere solo elementi non nulli
+    y_fit = y_fit[mask]
+    y_fit_values = y_fit_values[mask]
+    
+    # calcolo residui
+    residuals = y_fit - y_fit_values
+    # errore poissoniano (radice del valore) 
+    sigma = np.sqrt(y_fit)   
+        
+    chi2 = np.sum((residuals / sigma) ** 2)
+    dof = len(y_fit) - len(popt)
+    
+    return chi2, dof
