@@ -171,7 +171,7 @@ def fit_N_gaussiane (x_fit, y_fit, params, bounds, N_MAX_GAUSS=5, n_acq=5):
     if not success:
         raise Exception('PRIMO fit non riuscito')
     
-    chi2, dof, argmax = chi2_N_gaussiane (x_fit, y_fit, popt)
+    chi2, dof, argmax = chi2_N_gaussiane (x_fit, y_fit, popt, n_acq)
     chi2_rid = chi2/dof
     
     ## AGGIUNTA DI GAUSSIANE IN BASE AL CHI2RID ##
@@ -201,7 +201,23 @@ def fit_N_gaussiane (x_fit, y_fit, params, bounds, N_MAX_GAUSS=5, n_acq=5):
     return popt, pcov, chi2_rid
 
 
+# legge varshni
+def varshni (x, E_0, alpha, beta):
+     # x == T
+    return E_0 - (alpha * x*x) / (beta + x)
 
+# Funzione per il calcolo del chi2 ridotto per fit varshni  
+def chi2_varshni (x_fit, y_fit, err_y, popt):
+   
+    y_fit_values = varshni(x_fit, *popt)
+    
+    # calcolo residui
+    residuals = y_fit - y_fit_values
+        
+    chi2 = np.sum((residuals / err_y) ** 2)
+    dof = len(y_fit) - len(popt)
+    
+    return chi2, dof
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -226,7 +242,31 @@ def read_trpl_csv (nomefile):
    
     return waveln, assorbimento, emissione, trasmissione
 
+# doppio esponenziale per estrarre tau
+# con traslazione sia su asse x che su asse y
+def doppio_esponenziale (x, a1, tau1, a2, tau2, delta_x, delta_y):
+    x = x - delta_x
+    return a1 * np.exp(-x/tau1) + a2 * np.exp(-x/tau2) + delta_y
 
+# Funzione per il calcolo del chi2 ridotto per fit doppio esp
+def chi2_doppio_esponenziale (x_fit, y_fit, popt):
+    ## CHI 2 RID ##
+    y_fit_values = doppio_esponenziale(x_fit, *popt)
+    
+    # rimuovo elementi nulli
+    mask = (y_fit != 0) & (y_fit_values != 0)  # Maschera per tenere solo elementi non nulli
+    y_fit = y_fit[mask]
+    y_fit_values = y_fit_values[mask]
+    
+    # calcolo residui
+    residuals = y_fit - y_fit_values
+    # errore poissoniano (radice del valore) 
+    sigma = np.sqrt(y_fit) # quante acquisizioni?
+        
+    chi2 = np.sum((residuals / sigma) ** 2)
+    dof = len(y_fit) - len(popt)
+    
+    return chi2, dof
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -281,8 +321,8 @@ def clean_counts_assorbimento(counts, n=1, n_primi=20, n_ultimi=20):
     return filtered_counts
 
 
-# Funzione per il calcolo del chi2 ridotto      
-def chi2_gaussiana (x_fit, y_fit, popt):
+# Funzione per il calcolo del chi2 ridotto per fit gaussiani  
+def chi2_gaussiana (x_fit, y_fit, popt, n_acq=5):
     ## CHI 2 RID ##
     y_fit_values = gaussiana(x_fit, *popt)
     
@@ -295,8 +335,12 @@ def chi2_gaussiana (x_fit, y_fit, popt):
     residuals = y_fit - y_fit_values
     # errore poissoniano (radice del valore) 
     sigma = np.sqrt(y_fit)   
+    
+    if n_acq != 0:
+        sigma = sigma / np.sqrt(40*n_acq)
         
     chi2 = np.sum((residuals / sigma) ** 2)
     dof = len(y_fit) - len(popt)
     
     return chi2, dof
+
