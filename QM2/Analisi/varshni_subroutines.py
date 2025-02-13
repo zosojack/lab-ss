@@ -24,6 +24,10 @@ def err_lambda_to_E (wavelenght, err_wavelenght):
         return h_in_ev * c_luce * err_wavelenght / (wavelenght*wavelenght*1e-09)
     else:
         return 0
+   
+# conversione fwhm: prendo i margini in eV dx e sx della gauss e faccio differenza 
+def conversione_fwhm ():
+    return 0
 
 # legge varshni
 def varshni (T, E_0, alpha, beta):
@@ -44,8 +48,8 @@ def gaussiana(x, A, mu, sigma):
 '''
 
 # costruisce automaticamente il nome del file di rampa_T
-def build_name (campione, d_o_emi, d_o_ass, temperatura):
-    name = '../data/rampa_T/' + campione + d_o_emi + 'OD_' + d_o_ass + 'OD_orangeF_' + str(temperatura) + 'K.txt'
+def build_name (campione, d_o_emi, d_o_ass, temperatura, cartella='../data/rampa_T/'):
+    name =  cartella + campione + d_o_emi + 'OD_' + d_o_ass + 'OD_orangeF_' + str(temperatura) + 'K.txt'
     return name
 
 # costruisce automaticamente il nome del file dei diversi spot
@@ -140,7 +144,7 @@ def find_peak_in_regions(asse_x, asse_y, height=20, distance=7, prominence=6):
 
 # ora ho i picchi, per ciascun picco bisogna fittare con gauss
 # Funzione per il fit locale attorno a ciascun picco
-def fit_gaussiani(asse_x, asse_y, picchi_regioni, emi, ass, temp, option=0, fondo=13):
+def fit_gaussiani(asse_x, asse_y, picchi_regioni, emi, ass, temp, option=0, fondo=13, normalize=0):
     """
     Funzione per effettuare il fit delle regioni selezionate con gaussiane e plottare i risultati.
     Restituisce i risultati del fit per ciascuna regione.
@@ -177,7 +181,9 @@ def fit_gaussiani(asse_x, asse_y, picchi_regioni, emi, ass, temp, option=0, fond
     # Dizionario per memorizzare i risultati
     risultati = {"Regione 1": [], "Regione 2": []}
 
-    plt.figure(figsize=(5, 3))
+    # FIXME: cambio provvisoriamente dimensione figura
+    plt.figure(figsize=(10,6),dpi=200)
+    # plt.figure(figsize=(5, 3))
     plt.plot(asse_x, asse_y, color='blue') 
 
     # Margini personalizzati per ciascuna regione
