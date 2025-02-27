@@ -6,24 +6,32 @@ from scipy.optimize import curve_fit
 from scipy.stats import chi2
 
 # conversione lambda (nm) in E (eV)
-def lambda_to_E (wavelenght):
+def lambda_to_E (wavelength: float):
     h_in_ev = 4.1357e-15
     c_luce  = 299792458
     
-    if wavelenght != 0:
-        return h_in_ev * c_luce / (wavelenght*1e-09)
+    if isinstance(wavelength, (int, float)):  # Caso scalare
+        return h_in_ev * c_luce / (wavelength * 1e-09) if wavelength != 0 else 0
+
+    elif isinstance(wavelength, np.ndarray):  # Caso np.array
+        return h_in_ev * c_luce / (wavelength * 1e-09)
+
+    elif isinstance(wavelength, list):  # Caso lista
+        return np.array([h_in_ev * c_luce / (wv * 1e-09) for wv in wavelength])
+
     else:
-        return 0
+        raise TypeError("Input non supportato. Usa float, list o np.ndarray.")
+
 
 # propagazione errore lambda (nm) in E (eV)
-def err_lambda_to_E (wavelenght, err_wavelenght):
+def err_lambda_to_E(wavelength, err_wavelength):
     h_in_ev = 4.1357e-15
-    c_luce  = 299792458
-    
-    if wavelenght != 0:
-        return h_in_ev * c_luce * err_wavelenght / (wavelenght*wavelenght*1e-09)
-    else:
-        return 0
+    c_luce = 299792458
+
+    wavelength = np.asarray(wavelength)
+    err_wavelength = np.asarray(err_wavelength)
+
+    return np.where(wavelength != 0, h_in_ev * c_luce * err_wavelength / (wavelength**2 * 1e-09), 0)
    
 # conversione fwhm: prendo i margini in eV dx e sx della gauss e faccio differenza 
 def conversione_fwhm ():
@@ -53,8 +61,12 @@ def build_name (campione, d_o_emi, d_o_ass, temperatura, cartella='../data/rampa
     return name
 
 # costruisce automaticamente il nome del file dei diversi spot
-def spot_name (campione, d_o_emi, d_o_ass, num_spot):
-    name = '../data/tre_spot/' + campione + d_o_emi + 'OD_' + d_o_ass + 'OD_orangeF_15K_spot' + str(num_spot) + '.txt'
+def spot_name (campione, d_o_emi, d_o_ass, num_spot, cartella=None):
+    
+    if cartella:
+        name = cartella + campione + d_o_emi + 'OD_' + d_o_ass + 'OD_orangeF_15K_spot' + str(num_spot) + '.txt'
+    else:
+        name = '../data/tre_spot/' + campione + d_o_emi + 'OD_' + d_o_ass + 'OD_orangeF_15K_spot' + str(num_spot) + '.txt'
     return name
 
 # legge il file, estrapola ascissa(wavelength) e ordinata (counts)
@@ -350,6 +362,12 @@ def media_pesata (values, errors):
         den += w
     
     return num/den
+
+
+
+
+
+
 
 
 
