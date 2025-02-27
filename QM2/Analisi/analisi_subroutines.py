@@ -1,15 +1,19 @@
 '''
     SUBROUTINES PER L'ANALISI DEI CAMPIONI C240830 E C240920
+    
+    Nelle funzioni si inserisce anche la possibilità di fittare con Varshni
 '''
 
 import numpy as np
 import matplotlib.pyplot as plt
 
+from scipy.optimize import curve_fit
+from varshni_subroutines import varshni
+
 # per le iterazioni
 d_o_emi = ['0', '0o5', '1', '1o5', '2', '2o5', '3']#, '3o5']
 d_o_ass = ['1', '0']
 arr_temperatura = [15, 30, 45, 70, 100, 150]
-
 
 # singola gaussiana
 def gaussiana(x, a, mu, sigma):
@@ -50,13 +54,35 @@ def err_lambda_to_E(wavelength, err_wavelength):
 
     return np.where(wavelength != 0, h_in_ev * c_luce * err_wavelength / (wavelength**2 * 1e-09), 0)
 
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+## PER ANALISI FIT VARSHNI ##
+def analisi_fit_varshni (x, y, popt, yerr):
 
+        ## Residui del picco SX
+        residui1 = y - varshni(x, *popt)
+        chi2 = np.sum((residui1 / yerr) ** 2)
+
+        # Gradi di libertà (numero dati - numero parametri del fit)
+        gdl = len(y) - len(popt)
+        
+        return chi2, gdl
+
+def media_pesata (x, err):
+    x = np.array(x)
+    err = np.array(err)
+    
+    pesi = 1 / err**2  # I pesi sono l'inverso del quadrato degli errori
+    media = np.sum(x * pesi) / np.sum(pesi)
+    errore_media = np.sqrt(1 / np.sum(pesi))
+    
+    return media, errore_media
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ## PER I PLOT ##
 
 # SU TEMPERATURA
-def plot_su_T (picchi, option, x=None, d_o_ass=None, d_o_emi=None, arr_temperatura=None, col=None, materiale=None):
+def plot_su_T (picchi, option, x=None, d_o_ass=None, d_o_emi=None, arr_temperatura=None, 
+               col=None, materiale=None, campione=None, VARSHNI=False):
     """
     Genera un grafico della dipendenza di una grandezza fisica dalla temperatura per diversi stati di assorbimento ed emissione.
 
@@ -96,6 +122,13 @@ def plot_su_T (picchi, option, x=None, d_o_ass=None, d_o_emi=None, arr_temperatu
             
     x = arr_temperatura
     
+    if VARSHNI:
+        # printo un messaggio
+        print("RISULTATI FIT VARSHNI")
+        # predispongo due vettori per la media pesata
+        e_gap = []
+        err_e_gap = [] 
+    
     plt.figure(figsize=(6, 4), dpi=200)
     j=0
     for ass in d_o_ass:
@@ -134,11 +167,51 @@ def plot_su_T (picchi, option, x=None, d_o_ass=None, d_o_emi=None, arr_temperatu
             plt.scatter(x, y1, color=col[j], marker='x', label=ass+'|'+emi, s=25)
             plt.plot(x, y1, linestyle='--', color=col[j], linewidth=0.5) # unisce i punti
             
+            # --- # OPZIONE VARSHNI # --- # OPZIONE VARSHNI # --- # OPZIONE VARSHNI # --- # OPZIONE VARSHNI # --- #
+            
+            # Se l'opzione VARSHNI è su True, il plot su temperatura viene fittato con la legge di Varshni
+            if VARSHNI:
+                # Fit Varshni
+                popt, pcov = curve_fit(varshni, x, y1, sigma=err1, absolute_sigma=True, p0=[x[0], 3, 1], 
+                            bounds=([0, -np.inf, 0], [np.inf, np.inf, np.inf]))
+                # Errori sui parametri
+                perr = np.sqrt(np.diag(pcov))  # Errori per il primo picco
+                
+                # Creazione del grafico
+                x_fit = np.linspace(x[0], x[-1], x[-1]-x[0])  # Creazione di un intervallo continuo per il grafico
+                # Plot del fit
+                plt.plot(x_fit, varshni(x_fit, *popt), color=col[j], linewidth=0.25)
+                
+                chi2, gdl = analisi_fit_varshni(x, y1, popt, err1)
+                
+                # raccolta dei risultati e print
+                # Stampa dei risultati
+                print(F"- - - - - - - - - - - - - - - - < {ass} & {emi} > - - - - - - - - - - - - - - - -")
+                print(f"E_0 = {popt[0]:.4f} ± {perr[0]:.4f} | alpha = {popt[1]:.4f} ± {perr[1]:.4f} | beta = {popt[2]:.4f} ± {perr[2]:.4f}")
+                
+                e_gap.append(popt[0])
+                err_e_gap.append(perr[0])
+                
+                if gdl != 0:
+                    print(f"• Chi quadro ridotto: {chi2:.3f}/{gdl}={chi2/gdl:.3f}")    
+                else: 
+                    print(f"• Chi quadro ridotto: {chi2:.3f}/0=inf") 
+                
+             # --- # OPZIONE VARSHNI # --- # OPZIONE VARSHNI # --- # OPZIONE VARSHNI # --- # OPZIONE VARSHNI # --- #
+            
             # ri-inverto
             ass = emi
             emi = help
             
             j += 1
+    
+    # SE L'OPZIONE VARSHNI È ATTIVA, CALCOLO LA MEDIA PESATA DEGLI E_0    
+    if VARSHNI:
+        # calcolo
+        media_gap, errore_media_gap = media_pesata(e_gap, err_e_gap)
+        # stampo a schermo
+        print(F"- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -")
+        print(f'\nMEDIA PESATA E_GAP = {media_gap} ± {errore_media_gap}')
 
     # li inverto poi li ri-inverto
     help = emi
@@ -146,6 +219,9 @@ def plot_su_T (picchi, option, x=None, d_o_ass=None, d_o_emi=None, arr_temperatu
     ass = help
         
     # Aggiungere etichette e legenda
+    if campione:
+        materiale = campione + ' | ' + materiale
+    
     if option == 'mu':
         plt.title(materiale+': ENERGIA su T')
         plt.ylabel('Energia (eV)')
@@ -169,7 +245,8 @@ def plot_su_T (picchi, option, x=None, d_o_ass=None, d_o_emi=None, arr_temperatu
     plt.show()
     
 # SU INTENSITÀ
-def plot_su_int (picchi, option, x=None, d_o_ass=None, d_o_emi=None, arr_temperatura=None, col=None, materiale=None):
+def plot_su_int (picchi, option, x=None, d_o_ass=None, d_o_emi=None, arr_temperatura=None, 
+                 col=None, materiale=None, campione=None):
     """
     Genera un grafico della dipendenza di una grandezza fisica dall'intensità per diverse temperature.
 
@@ -271,6 +348,9 @@ def plot_su_int (picchi, option, x=None, d_o_ass=None, d_o_emi=None, arr_tempera
     ass = help
     
     # Aggiungere etichette e legenda
+    if campione:
+        materiale = campione + ' | ' + materiale
+        
     if option == 'mu':
         plt.title(materiale+': ENERGIA su Intensità')
         plt.ylabel('Energia (eV)')
